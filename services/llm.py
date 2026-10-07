@@ -7,6 +7,9 @@ Two providers:
   smart: it does structural parsing and a couple of planted behaviours (notably
   the >30%% -> "35%%" overclaim) so the deterministic verifier has something real
   to catch.
+* ``ollama`` -- a local model on 127.0.0.1; nothing leaves the machine.
+* ``anthropic`` -- Claude via the Anthropic Messages API, standard library only.
+  This is what the hosted demo uses (ANTHROPIC_API_KEY in Streamlit secrets).
 * ``litellm`` -- routes real calls through LiteLLM using LLM_MODEL from .env.
   Import-guarded; only used when explicitly configured.
 
@@ -216,6 +219,8 @@ class LLM:
                 "duration_seconds": round(data.get("total_duration", 0) / 1_000_000_000, 3),
             })
             return data.get("message", {}).get("content", "")
+        if self.provider == "anthropic":
+            return self._complete_anthropic(stage, system, user)
         if self.provider != "litellm":
             raise RuntimeError(
                 "LLM.complete() requires LLM_PROVIDER=ollama or litellm; the "
@@ -244,6 +249,47 @@ class LLM:
             "duration_seconds": None,
         })
         return resp["choices"][0]["message"]["content"]
+
+    def _complete_anthropic(self, stage: str, system: str, user: str) -> str:
+        """One Messages API call, standard library only, with measured usage."""
+        import time
+
+        key = config.ANTHROPIC_API_KEY
+        if not key:
+            raise RuntimeError("LLM_PROVIDER=anthropic but ANTHROPIC_API_KEY is not set.")
+        payload = {
+            "model": self.model,
+            "max_tokens": config.ANTHROPIC_MAX_TOKENS,
+            "temperature": 0,
+            "system": system,
+            "messages": [{"role": "user", "content": user}],
+        }
+        request = Request(
+            "https://api.anthropic.com/v1/messages",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "content-type": "application/json",
+                "x-api-key": key,
+                "anthropic-version": "2023-06-01",
+            },
+            method="POST",
+        )
+        started = time.monotonic()
+        try:
+            with urlopen(request, timeout=120) as response:
+                data = json.load(response)
+        except (URLError, TimeoutError) as exc:
+            raise RuntimeError(f"Anthropic API call failed: {exc}") from exc
+        usage = data.get("usage") or {}
+        _record_usage({
+            "stage": stage, "provider": "anthropic", "model": self.model,
+            "input_tokens": usage.get("input_tokens"),
+            "output_tokens": usage.get("output_tokens"),
+            "reasoning_tokens": None,
+            "duration_seconds": round(time.monotonic() - started, 3),
+        })
+        return "".join(block.get("text", "") for block in data.get("content", [])
+                       if block.get("type") == "text")
 
 
 # --------------------------------------------------------------------------- #

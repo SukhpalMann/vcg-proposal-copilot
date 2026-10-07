@@ -12,12 +12,23 @@ Presentation tokens and components are defined in ui.py.
 """
 from __future__ import annotations
 
+import os
 from collections import Counter
 
 import pandas as pd
 import streamlit as st
 
-import config
+# Streamlit Community Cloud keeps credentials in st.secrets. Copy plain values
+# into the environment BEFORE config is imported, so the hosted deployment can
+# run live AI (LLM_PROVIDER=anthropic + ANTHROPIC_API_KEY) with no code change.
+try:
+    for _k, _v in st.secrets.items():
+        if isinstance(_v, (str, int, float, bool)):
+            os.environ.setdefault(_k, str(_v))
+except Exception:                                   # no secrets file locally
+    pass
+
+import config  # noqa: E402
 import ui
 from models.schemas import ReviewDecision, VerificationStatus
 from pipeline import export, qualification, review
@@ -51,8 +62,15 @@ with st.sidebar:
     st.markdown('<div class="note">RFP to source-grounded, review-ready proposal</div>', **H)
     if config.LLM_PROVIDER == "ollama":
         st.caption(f"Local AI: {config.LLM_MODEL}. Documents stay on this machine.")
+    elif config.LLM_PROVIDER == "anthropic":
+        st.caption(f"Live AI: {config.LLM_MODEL} drafts each section. Verification is "
+                   "rule-based and never uses the model. The sample tenders are "
+                   "synthetic; uploaded documents are sent to Anthropic's API.")
     elif config.LLM_PROVIDER == "mock":
-        st.warning("Simulation mode: the deterministic mock is for testing, not a live AI demo.")
+        why = (f" ({config.PROVIDER_FALLBACK_REASON})"
+               if config.PROVIDER_FALLBACK_REASON else "")
+        st.warning("Simulation mode: the deterministic mock is for testing, not a "
+                   f"live AI demo{why}.")
     else:
         st.warning("Hosted model mode: documents are sent to the configured provider.")
     st.divider()
@@ -539,23 +557,37 @@ with tab_exec:
         scale = costing.at_scale(usage_events)
 
         st.markdown('<div class="sec-h">Measured cost of this session</div>', **H)
+        hosted_run = cost["provider"] in {"anthropic", "litellm"}
         st.markdown(ui.tiles([
             ("Model", cost["model"] or "—", f'{cost["provider"]} · {cost["calls"]} calls',
              ui.BRAND),
             ("Input tokens", f'{cost["input_tokens"]:,}', "measured", ui.MUTED),
             ("Output tokens", f'{cost["output_tokens"]:,}', "measured", ui.MUTED),
-            ("Generation time", f'{cost["seconds"]:.0f}s', "wall clock", ui.MUTED),
-            ("Local cost", f'₹{cost["local_inr"]:.3f}', "electricity only",
-             ui.STATUS["SUPPORTED"]["fill"]),
-            ("Hosted equivalent", f'₹{cost["api_equivalent_inr"]:.2f}',
-             "same tokens, cloud API", ui.STATUS["PARTIAL"]["fill"]),
+            ("Generation time", f'{cost["seconds"]:.0f}s',
+             "API latency" if hosted_run else "wall clock", ui.MUTED),
+            *([("Session cost", f'₹{cost["api_equivalent_inr"]:.2f}',
+                f'measured tokens × {config.HOSTED_MODEL_LABEL} rates',
+                ui.STATUS["SUPPORTED"]["fill"])] if hosted_run else
+              [("Local cost", f'₹{cost["local_inr"]:.3f}', "electricity only",
+                ui.STATUS["SUPPORTED"]["fill"]),
+               ("Hosted equivalent", f'₹{cost["api_equivalent_inr"]:.2f}',
+                f"same tokens on {config.HOSTED_MODEL_LABEL}",
+                ui.STATUS["PARTIAL"]["fill"])]),
         ]), **H)
-        st.markdown(
-            f'<div class="note">Running the model locally costs '
-            f'<b>₹{cost["local_inr"]:.3f}</b> per proposal in electricity and sends '
-            f'nothing off the machine. The same workload on a hosted API would cost '
-            f'<b>₹{cost["api_equivalent_inr"]:.2f}</b> — faster and higher quality, '
-            f'but the tender and the firm\'s evidence would leave the tenant.</div>', **H)
+        if hosted_run:
+            st.markdown(
+                f'<div class="note">This proposal cost <b>₹{cost["api_equivalent_inr"]:.2f}</b> '
+                f'in model tokens. The local Ollama mode keeps the tender on the machine '
+                f'at a marginal cost of electricity only, but takes minutes rather than '
+                f'seconds on a laptop.</div>', **H)
+        else:
+            st.markdown(
+                f'<div class="note">Running the model locally costs '
+                f'<b>₹{cost["local_inr"]:.3f}</b> per proposal in electricity and sends '
+                f'nothing off the machine. The same tokens on {config.HOSTED_MODEL_LABEL} '
+                f'would cost <b>₹{cost["api_equivalent_inr"]:.2f}</b>: faster and better '
+                f'written, but the tender and the firm\'s evidence would leave the '
+                f'tenant.</div>', **H)
 
         st.write("")
         st.markdown('<div class="sec-h">At 10,000 users · one proposal each per month</div>', **H)

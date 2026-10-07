@@ -50,9 +50,17 @@ DB_PATH = Path(_get("DB_PATH", str(DATA_DIR / "proposal_copilot.sqlite")))
 CHROMA_PATH = Path(_get("CHROMA_PATH", str(ROOT / ".chroma")))
 
 # --- LLM ------------------------------------------------------------------
-LLM_PROVIDER = _get("LLM_PROVIDER", "mock")            # mock | ollama | litellm
-LLM_MODEL = _get("LLM_MODEL", "gemma3:latest" if LLM_PROVIDER == "ollama"
-                 else "anthropic/claude-sonnet-5")
+LLM_PROVIDER = _get("LLM_PROVIDER", "mock")            # mock | ollama | anthropic | litellm
+ANTHROPIC_API_KEY = _get("ANTHROPIC_API_KEY", "")
+ANTHROPIC_MAX_TOKENS = int(_get_float("ANTHROPIC_MAX_TOKENS", 1500))
+# A hosted deployment configured for Claude but missing its key falls back to
+# the deterministic generator and says so, rather than failing every run.
+PROVIDER_FALLBACK_REASON = ""
+if LLM_PROVIDER == "anthropic" and not ANTHROPIC_API_KEY:
+    LLM_PROVIDER = "mock"
+    PROVIDER_FALLBACK_REASON = "ANTHROPIC_API_KEY is not set"
+_DEFAULT_MODEL = {"ollama": "gemma3:latest", "anthropic": "claude-haiku-5-5"}
+LLM_MODEL = _get("LLM_MODEL", _DEFAULT_MODEL.get(LLM_PROVIDER, "anthropic/claude-haiku-5-5"))
 
 OLLAMA_NUM_CTX = int(_get_float("OLLAMA_NUM_CTX", 8192))   # 4096 truncates drafting prompts
 
