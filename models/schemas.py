@@ -42,6 +42,10 @@ class VerificationStatus(str, Enum):
     PARTIAL = "PARTIAL"
     GAP = "GAP"
     FORWARD_LOOKING = "FORWARD_LOOKING"
+    # Requirement rows with no drafted claim. These were never verified, so they
+    # must not be reported as PARTIAL (which means "checked, and half-holds").
+    NARRATIVE = "NARRATIVE"          # answered in approach/workplan prose
+    HUMAN_INPUT = "HUMAN_INPUT"      # awaits partner-supplied content
 
 
 class ReviewDecision(str, Enum):

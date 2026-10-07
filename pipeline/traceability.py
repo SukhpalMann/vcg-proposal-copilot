@@ -73,6 +73,29 @@ def _match_requirements(state, claim):
     return [i for s, i in ranked if best - s <= 0.15][:2]
 
 
+def _threshold_shortfall(requirement_text: str, claim_text: str) -> str | None:
+    """If the requirement sets a percentage bar and the claim does not reach it,
+    say so. A true "18 percent" statement substantiates the claim; it does not
+    satisfy a tender asking for "greater than 30 percent". Without this check the
+    requirement rolled up as SUPPORTED on the strength of a figure below its bar.
+    """
+    from services.mock_llm import _threshold_pct, _threshold_unit
+    from services.text import extract_numeric_tokens
+
+    pct = _threshold_pct(requirement_text)
+    if pct is None:
+        return None
+    unit = _threshold_unit(requirement_text)
+    figures = [t for t in extract_numeric_tokens(claim_text)
+               if t.canonical_unit() == unit]
+    if any(t.value >= pct for t in figures):
+        return None
+    shown = ", ".join(t.raw for t in figures) or "no comparable figure"
+    return (f"Statement is substantiated, but it does not meet this requirement: "
+            f"it reports {shown} against the tender's bar of {pct:g} "
+            f"{'points' if unit == 'percentage_points' else 'percent'}.")
+
+
 def run(state: ProposalAgentState) -> ProposalAgentState:
     results = state["_verification_results"]
     claims_by_id = {c.claim_id: c for c in state["atomic_claims"]}
@@ -112,6 +135,11 @@ def run(state: ProposalAgentState) -> ProposalAgentState:
             ))
             if item:
                 covered_reqs.add(req_id)
+                if res["status"] == VerificationStatus.SUPPORTED:
+                    short = _threshold_shortfall(item.requirement_text, claim.claim_text)
+                    if short:
+                        entries[-1].verification_reason = (
+                            f"{entries[-1].verification_reason} | {short}")
 
     # requirements with no claim at all -> explicit rows so nothing hides
     for req in state["rfp_data"].requirements:
@@ -127,13 +155,13 @@ def run(state: ProposalAgentState) -> ProposalAgentState:
         elif req.handling in (RequirementHandling.TEMPLATE_SATISFIABLE,
                               RequirementHandling.PROCEDURAL_ONLY):
             status, section, reason = (
-                VerificationStatus.PARTIAL, "Proposed Approach & Workplan",
+                VerificationStatus.NARRATIVE, "Proposed Approach & Workplan",
                 "TEMPLATE/NARRATIVE-SATISFIABLE: addressed in the approach/workplan "
                 "narrative; no evidence citation required.",
             )
         elif req.handling == RequirementHandling.NEEDS_HUMAN_INPUT:
             status, section, reason = (
-                VerificationStatus.PARTIAL, "(human input)",
+                VerificationStatus.HUMAN_INPUT, "(human input)",
                 "HUMAN INPUT REQUIRED: content supplied by the engagement partner, "
                 "not drafted or verified by the agent.",
             )
@@ -240,8 +268,15 @@ def run(state: ProposalAgentState) -> ProposalAgentState:
         # claim's verdict. One that produced no claim is NOT "partially
         # substantiated" -- it was never checked, and reporting it as PARTIAL
         # conflated "we looked and it half-holds" with "we never looked".
-        if VerificationStatus.SUPPORTED in statuses:
+        supported_rows = [e for e in rows
+                          if e.verification_status == VerificationStatus.SUPPORTED]
+        meets_bar = [e for e in supported_rows
+                     if not _threshold_shortfall(req.text, e.claim_text)]
+        if meets_bar:
             roll = "SUPPORTED"
+        elif supported_rows:
+            # substantiated statements exist, but none clears the tender's bar
+            roll = "PARTIAL"
         elif any(e.verification_status == VerificationStatus.PARTIAL
                  for e in verified_rows):
             roll = "PARTIAL"

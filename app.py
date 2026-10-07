@@ -350,7 +350,7 @@ with tab_trace:
     f1, f2 = st.columns([2, 1])
     show = f1.multiselect(
         "Filter by verification result", [s.value for s in VerificationStatus],
-        default=["SUPPORTED", "PARTIAL", "GAP"],
+        default=["SUPPORTED", "PARTIAL", "GAP", "NARRATIVE", "HUMAN_INPUT"],
         format_func=lambda v: ui.STATUS.get(v, ui.STATUS["NO_ROW"])["label"])
     only_reqs = f2.checkbox("Requirement-linked records only", value=True)
 

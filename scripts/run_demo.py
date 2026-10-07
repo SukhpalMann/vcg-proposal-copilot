@@ -94,7 +94,13 @@ def main() -> int:
     print("-" * len(hdr))
     print(f"TOTALS: SUPPORTED={draft.supported_claim_count}  "
           f"PARTIAL={draft.partial_claim_count}  GAP={draft.gap_claim_count}  "
-          f"sections={len(draft.sections)}")
+          f"sections={len(draft.sections)}   (distinct drafted claims)")
+    from collections import Counter
+    unclaimed = Counter(e.verification_status.value for e in state["overall_traceability"]
+                        if e.claim_id == "(none)")
+    if unclaimed:
+        print("REQUIREMENTS WITH NO DRAFTED CLAIM (never verified): "
+              + "  ".join(f"{k}={v}" for k, v in sorted(unclaimed.items())))
 
     # hero assertion -- only meaningful for the happy-path fixture
     rows = state["overall_traceability"]
