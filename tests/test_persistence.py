@@ -73,3 +73,18 @@ def test_decision_is_recorded_to_db(abc_state):
                                    ReviewDecision.CHANGES_REQUESTED, "tighten")
     rows = get_store().decisions(abc_state["run_id"])
     assert rows and rows[-1]["decision"] == "CHANGES_REQUESTED"
+
+
+def test_unpicklable_state_does_not_fail_the_run(monkeypatch):
+    """A hot code reload leaves stale classes in session state; saving must not crash."""
+    import pickle
+
+    from pipeline import graph
+
+    def boom(_obj):
+        raise pickle.PicklingError("Can't pickle <class 'X'>: it's not the same object as X")
+
+    monkeypatch.setattr(pickle, "dumps", boom)
+    state = {"run_id": "stale-classes", "warnings": [], "execution_log": []}
+    graph.save_run_state(state)                      # must not raise
+    assert any("not saved for reopening" in w for w in state["warnings"])

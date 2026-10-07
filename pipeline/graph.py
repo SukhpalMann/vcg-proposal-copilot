@@ -149,7 +149,21 @@ def save_run_state(state: ProposalAgentState, db=None) -> None:
 
     db = db or get_store()
     snapshot = {k: v for k, v in state.items() if k != "_semantic_fn"}
-    db.save_state_blob(state["run_id"], pickle.dumps(snapshot))
+    try:
+        blob = pickle.dumps(snapshot)
+    except Exception as exc:
+        # Saving is what lets a run be REOPENED later; it must never fail the run
+        # itself. The usual cause is a hot code reload on Streamlit Cloud: the
+        # session still holds objects built from the previous version of a class,
+        # and pickle refuses to mix the two. The run carries on; only "Reopen
+        # run" is unavailable for it until the app is rebooted.
+        note = (f"Run not saved for reopening ({type(exc).__name__}). The app's code "
+                "was updated during this session; reboot the app to restore saving.")
+        if note not in state.setdefault("warnings", []):
+            state["warnings"].append(note)
+        blob = None
+    if blob is not None:
+        db.save_state_blob(state["run_id"], blob)
     db.save_snapshot(state["run_id"], _snapshot(state))
 
 
