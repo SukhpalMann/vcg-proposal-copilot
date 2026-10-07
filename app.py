@@ -559,20 +559,20 @@ with tab_exec:
 
         st.write("")
         st.markdown('<div class="sec-h">At 10,000 users · one proposal each per month</div>', **H)
+        _tiers = scale["hosted_tiers_monthly_inr"]
         st.markdown(ui.tiles([
-            ("Sessions", f'{scale["sessions"]:,}', "per month", ui.BRAND),
-            ("Input tokens", f'{scale["input_tokens"]/1e6:.1f}M', "per month", ui.MUTED),
-            ("Output tokens", f'{scale["output_tokens"]/1e6:.1f}M', "per month", ui.MUTED),
-            ("Hosted API", f'₹{scale["api_monthly_inr"]:,.0f}', "per month",
-             ui.STATUS["PARTIAL"]["fill"]),
+            ("Proposals", f'{scale["sessions"]:,}', "per month", ui.BRAND),
+            ("Tokens", f'{(scale["input_tokens"] + scale["output_tokens"])/1e6:.0f}M',
+             f'{scale["input_share"]:.0%} input', ui.MUTED),
+            *[(name, f'₹{v:,.0f}', "per month, hosted",
+               ui.STATUS["SUPPORTED"]["fill"] if i == 0 else ui.STATUS["PARTIAL"]["fill"])
+              for i, (name, v) in enumerate(_tiers.items())],
             ("Self-hosted GPU", f'₹{scale["self_hosted_monthly_inr"]:,.0f}',
-             f'{scale["self_hosted_gpu_hours"]:,.0f} GPU-hours', ui.STATUS["SUPPORTED"]["fill"]),
+             f'{scale["self_hosted_gpu_hours"]:,.0f} busy GPU-hours; one GPU always on',
+             ui.STATUS["GAP"]["fill"]),
         ]), **H)
-        st.markdown(
-            '<div class="note">A single laptop cannot serve this concurrency, so at '
-            'scale the choice is hosted inference or dedicated GPU capacity. Self-hosting '
-            'keeps the offline guarantee and the cost becomes capacity, not tokens; the '
-            'hosted route is cheaper to start and faster per request.</div>', **H)
+        st.markdown('<div class="sec-h">What we would change at that scale</div>', **H)
+        st.markdown("\n".join(f"- {r}" for r in costing.recommendations(usage_events)))
 
         with st.expander("Assumptions behind these figures"):
             st.markdown('<div class="note">Token counts and elapsed time are measured. '

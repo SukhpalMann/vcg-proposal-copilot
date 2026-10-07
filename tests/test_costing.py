@@ -56,3 +56,23 @@ def test_every_number_has_a_stated_assumption():
     keys = {k for k, _ in costing.assumptions()}
     assert {"Exchange rate", "Hosted input rate", "Hosted output rate",
             "Local device draw", "Electricity", "Rented GPU"} <= keys
+
+
+def test_gpu_hours_come_from_tokens_not_laptop_seconds():
+    scaled = costing.at_scale(USAGE, users=1000)
+    expected = costing.gpu_seconds_for(7000 * 1000, 2800 * 1000) / 3600.0
+    assert abs(scaled["self_hosted_gpu_hours"] - round(expected, 1)) < 0.05
+    # laptop wall-clock (90 s/session) must not drive the GPU estimate
+    assert scaled["self_hosted_gpu_hours"] != round(90.0 * 1000 / 3600.0, 1)
+
+
+def test_self_hosted_bill_has_an_always_on_floor():
+    scaled = costing.at_scale(USAGE, users=10)
+    assert scaled["self_hosted_monthly_inr"] >= scaled["gpu_floor_inr"]
+
+
+def test_every_hosted_tier_is_projected_and_recommendations_exist():
+    scaled = costing.at_scale(USAGE)
+    assert set(scaled["hosted_tiers_monthly_inr"]) == set(config.HOSTED_TIERS)
+    recs = costing.recommendations(USAGE)
+    assert recs and any("cache" in r.lower() for r in recs)

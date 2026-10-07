@@ -121,14 +121,29 @@ NUMERIC_ABS_TOLERANCE = 0.5          # percentage points / absolute units
 NUMERIC_CONTEXT_WINDOW = 20          # +/- tokens around a number when checking consistency
 
 # --- Cost model (services/costing.py) -------------------------------------
-# ASSUMPTIONS, not measurements. Set from live pricing before quoting a figure;
-# costing.assumptions() surfaces every one of these next to the numbers.
+# ASSUMPTIONS, not measurements. costing.assumptions() surfaces every one of
+# these next to the numbers. Hosted rates checked against
+# https://platform.claude.com/docs/en/about-claude/pricing on 2026-10-08
+# (prompts under 100k tokens). Re-check before quoting a figure.
 USD_INR = _get_float("USD_INR", 89.0)                    # exchange rate
-API_USD_PER_MTOK_INPUT = _get_float("API_USD_PER_MTOK_INPUT", 3.00)
-API_USD_PER_MTOK_OUTPUT = _get_float("API_USD_PER_MTOK_OUTPUT", 15.00)
+# Primary hosted model: the one the public demo uses (Claude Haiku 5.5).
+HOSTED_MODEL_LABEL = _get("HOSTED_MODEL_LABEL", "Claude Haiku 5.5")
+API_USD_PER_MTOK_INPUT = _get_float("API_USD_PER_MTOK_INPUT", 0.10)
+API_USD_PER_MTOK_OUTPUT = _get_float("API_USD_PER_MTOK_OUTPUT", 0.50)
+# Comparison tiers shown alongside, so the quality / cost trade-off is visible.
+HOSTED_TIERS = {
+    "Claude Haiku 5.5": (0.10, 0.50),
+    "Claude Sonnet 5.5": (2.00, 10.00),
+}
 LOCAL_DEVICE_WATTS = _get_float("LOCAL_DEVICE_WATTS", 30.0)   # laptop draw while generating
 ELECTRICITY_INR_PER_KWH = _get_float("ELECTRICITY_INR_PER_KWH", 8.0)
 GPU_INR_PER_HOUR = _get_float("GPU_INR_PER_HOUR", 110.0)      # rented inference GPU
+# Self-hosted throughput for a 4B model on one rented inference GPU, single
+# stream, no batching (conservative). The old projection reused the LAPTOP's
+# wall-clock seconds, which overstated GPU hours several-fold.
+GPU_OUTPUT_TOK_PER_SEC = _get_float("GPU_OUTPUT_TOK_PER_SEC", 40.0)
+GPU_PREFILL_TOK_PER_SEC = _get_float("GPU_PREFILL_TOK_PER_SEC", 2000.0)
+GPU_HOURS_PER_MONTH = 730.0          # one GPU rented around the clock
 
 # --- Export gating ------------------------------------------------------
 ALLOW_GAP_OVERRIDE = True            # unresolved GAPs block export unless explicitly overridden w/ reason
