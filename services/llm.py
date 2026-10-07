@@ -285,8 +285,11 @@ class LLM:
         while True:
             request = Request(
                 f"{preset['base_url']}/chat/completions", data=body,
+                # An explicit User-Agent: Cloudflare in front of some of these
+                # APIs rejects urllib's default one with a 403.
                 headers={"Content-Type": "application/json",
-                         "Authorization": f"Bearer {key}"},
+                         "Authorization": f"Bearer {key}",
+                         "User-Agent": "vcg-proposal-copilot/1.0"},
                 method="POST",
             )
             try:
