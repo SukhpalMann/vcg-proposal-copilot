@@ -8,8 +8,10 @@ Two providers:
   the >30%% -> "35%%" overclaim) so the deterministic verifier has something real
   to catch.
 * ``ollama`` -- a local model on 127.0.0.1; nothing leaves the machine.
+* ``groq`` / ``gemini`` -- free-tier hosted models through their OpenAI-compatible
+  endpoints, standard library only. Groq (gpt-oss-20b) is what the public demo
+  uses; set GROQ_API_KEY in Streamlit secrets.
 * ``anthropic`` -- Claude via the Anthropic Messages API, standard library only.
-  This is what the hosted demo uses (ANTHROPIC_API_KEY in Streamlit secrets).
 * ``litellm`` -- routes real calls through LiteLLM using LLM_MODEL from .env.
   Import-guarded; only used when explicitly configured.
 
@@ -22,7 +24,7 @@ from __future__ import annotations
 import json
 import re
 from contextvars import ContextVar
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 import config
@@ -221,6 +223,8 @@ class LLM:
             return data.get("message", {}).get("content", "")
         if self.provider == "anthropic":
             return self._complete_anthropic(stage, system, user)
+        if self.provider in config.OPENAI_COMPAT:
+            return self._complete_openai_compat(stage, system, user)
         if self.provider != "litellm":
             raise RuntimeError(
                 "LLM.complete() requires LLM_PROVIDER=ollama or litellm; the "
@@ -249,6 +253,75 @@ class LLM:
             "duration_seconds": None,
         })
         return resp["choices"][0]["message"]["content"]
+
+    def _complete_openai_compat(self, stage: str, system: str, user: str) -> str:
+        """Chat completion on an OpenAI-compatible endpoint (Groq, Gemini).
+
+        Free tiers enforce per-minute token limits, and one proposal makes about
+        seven drafting calls in quick succession. A 429 is therefore expected,
+        not exceptional: wait for the period the server asks for and retry,
+        up to COMPAT_MAX_RETRY_SECONDS in total.
+        """
+        import time
+
+        preset = config.OPENAI_COMPAT[self.provider]
+        key = config.compat_api_key(self.provider)
+        if not key:
+            raise RuntimeError(f"LLM_PROVIDER={self.provider} but "
+                               f"{preset['key_env']} is not set.")
+        payload = {
+            "model": self.model,
+            "temperature": 0,
+            "max_tokens": config.COMPAT_MAX_TOKENS,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            **preset.get("extra", {}),
+        }
+        body = json.dumps(payload).encode("utf-8")
+        waited = 0.0
+        started = time.monotonic()
+        while True:
+            request = Request(
+                f"{preset['base_url']}/chat/completions", data=body,
+                headers={"Content-Type": "application/json",
+                         "Authorization": f"Bearer {key}"},
+                method="POST",
+            )
+            try:
+                with urlopen(request, timeout=120) as response:
+                    data = json.load(response)
+                break
+            except HTTPError as exc:
+                if exc.code != 429 or waited >= config.COMPAT_MAX_RETRY_SECONDS:
+                    detail = ""
+                    try:
+                        detail = exc.read().decode("utf-8", "replace")[:300]
+                    except Exception:
+                        pass
+                    raise RuntimeError(f"{preset['label']} call failed "
+                                       f"(HTTP {exc.code}): {detail}") from exc
+                try:
+                    pause = float(exc.headers.get("retry-after") or 0)
+                except (TypeError, ValueError):
+                    pause = 0.0
+                pause = min(max(pause, 2.0), 30.0)
+                time.sleep(pause)
+                waited += pause
+            except (URLError, TimeoutError) as exc:
+                raise RuntimeError(f"{preset['label']} call failed: {exc}") from exc
+        usage = data.get("usage") or {}
+        _record_usage({
+            "stage": stage, "provider": self.provider, "model": self.model,
+            "input_tokens": usage.get("prompt_tokens"),
+            "output_tokens": usage.get("completion_tokens"),
+            "reasoning_tokens": (usage.get("completion_tokens_details") or {}).get("reasoning_tokens"),
+            "duration_seconds": round(time.monotonic() - started - waited, 3),
+            "rate_limit_wait_seconds": round(waited, 1),
+        })
+        choice = (data.get("choices") or [{}])[0]
+        return (choice.get("message") or {}).get("content") or ""
 
     def _complete_anthropic(self, stage: str, system: str, user: str) -> str:
         """One Messages API call, standard library only, with measured usage."""

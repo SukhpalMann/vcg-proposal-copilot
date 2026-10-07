@@ -50,16 +50,54 @@ DB_PATH = Path(_get("DB_PATH", str(DATA_DIR / "proposal_copilot.sqlite")))
 CHROMA_PATH = Path(_get("CHROMA_PATH", str(ROOT / ".chroma")))
 
 # --- LLM ------------------------------------------------------------------
-LLM_PROVIDER = _get("LLM_PROVIDER", "mock")            # mock | ollama | anthropic | litellm
+LLM_PROVIDER = _get("LLM_PROVIDER", "mock")   # mock | ollama | groq | gemini | anthropic | litellm
 ANTHROPIC_API_KEY = _get("ANTHROPIC_API_KEY", "")
 ANTHROPIC_MAX_TOKENS = int(_get_float("ANTHROPIC_MAX_TOKENS", 1500))
-# A hosted deployment configured for Claude but missing its key falls back to
-# the deterministic generator and says so, rather than failing every run.
+
+# Hosted providers with a FREE tier, reached through their OpenAI-compatible
+# chat endpoints (standard library only). Groq is the default for the public
+# demo: no card needed, and it serves an open-weight model (gpt-oss-20b), so the
+# product runs on open models both locally (Gemma) and hosted.
+# Paid rates are listed so the cost slide can show what the same tokens would
+# cost once past the free tier (Groq models page, checked 2026-10-08).
+OPENAI_COMPAT = {
+    "groq": {
+        "base_url": "https://api.groq.com/openai/v1",
+        "key_env": "GROQ_API_KEY",
+        "model": "openai/gpt-oss-20b",
+        "label": "gpt-oss-20b on Groq",
+        "usd_per_mtok": (0.075, 0.30),
+        "extra": {"reasoning_effort": "low"},   # gpt-oss: fewer hidden tokens
+    },
+    "gemini": {
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "key_env": "GEMINI_API_KEY",
+        "model": "gemini-2.5-flash",
+        "label": "Gemini 2.5 Flash",
+        "usd_per_mtok": None,                   # free tier only; not priced here
+        "extra": {},
+    },
+}
+FREE_TIER_PROVIDERS = {"groq", "gemini"}
+COMPAT_MAX_TOKENS = int(_get_float("COMPAT_MAX_TOKENS", 2000))
+COMPAT_MAX_RETRY_SECONDS = _get_float("COMPAT_MAX_RETRY_SECONDS", 90.0)
+
+
+def compat_api_key(provider: str) -> str:
+    preset = OPENAI_COMPAT.get(provider)
+    return os.environ.get(preset["key_env"], "") if preset else ""
+
+
+# A hosted deployment missing its key falls back to the deterministic generator
+# and says so, rather than failing every run.
 PROVIDER_FALLBACK_REASON = ""
 if LLM_PROVIDER == "anthropic" and not ANTHROPIC_API_KEY:
+    LLM_PROVIDER, PROVIDER_FALLBACK_REASON = "mock", "ANTHROPIC_API_KEY is not set"
+elif LLM_PROVIDER in OPENAI_COMPAT and not compat_api_key(LLM_PROVIDER):
+    PROVIDER_FALLBACK_REASON = f"{OPENAI_COMPAT[LLM_PROVIDER]['key_env']} is not set"
     LLM_PROVIDER = "mock"
-    PROVIDER_FALLBACK_REASON = "ANTHROPIC_API_KEY is not set"
-_DEFAULT_MODEL = {"ollama": "gemma3:latest", "anthropic": "claude-haiku-5-5"}
+_DEFAULT_MODEL = {"ollama": "gemma3:latest", "anthropic": "claude-haiku-5-5",
+                  **{k: v["model"] for k, v in OPENAI_COMPAT.items()}}
 LLM_MODEL = _get("LLM_MODEL", _DEFAULT_MODEL.get(LLM_PROVIDER, "anthropic/claude-haiku-5-5"))
 
 # Drafting prompt version: v1 (original) or v2 (explicit allowed ids, verbatim
@@ -134,19 +172,24 @@ NUMERIC_CONTEXT_WINDOW = 20          # +/- tokens around a number when checking 
 
 # --- Cost model (services/costing.py) -------------------------------------
 # ASSUMPTIONS, not measurements. costing.assumptions() surfaces every one of
-# these next to the numbers. Hosted rates checked against
-# https://platform.claude.com/docs/en/about-claude/pricing on 2026-10-08
-# (prompts under 100k tokens). Re-check before quoting a figure.
+# these next to the numbers. Rates checked on 2026-10-08 against
+# https://console.groq.com/docs/models and
+# https://platform.claude.com/docs/en/about-claude/pricing (prompts under 100k
+# tokens). Re-check before quoting a figure.
 USD_INR = _get_float("USD_INR", 89.0)                    # exchange rate
-# Primary hosted model: the one the public demo uses (Claude Haiku 5.5).
-HOSTED_MODEL_LABEL = _get("HOSTED_MODEL_LABEL", "Claude Haiku 5.5")
-API_USD_PER_MTOK_INPUT = _get_float("API_USD_PER_MTOK_INPUT", 0.10)
-API_USD_PER_MTOK_OUTPUT = _get_float("API_USD_PER_MTOK_OUTPUT", 0.50)
 # Comparison tiers shown alongside, so the quality / cost trade-off is visible.
 HOSTED_TIERS = {
+    "gpt-oss-20b on Groq": (0.075, 0.30),
     "Claude Haiku 5.5": (0.10, 0.50),
     "Claude Sonnet 5.5": (2.00, 10.00),
 }
+# Primary hosted model: the one the public demo runs. Follows the provider.
+_PRIMARY = {"groq": "gpt-oss-20b on Groq", "anthropic": "Claude Haiku 5.5"}
+HOSTED_MODEL_LABEL = _get("HOSTED_MODEL_LABEL",
+                          _PRIMARY.get(LLM_PROVIDER, "gpt-oss-20b on Groq"))
+_rates = HOSTED_TIERS.get(HOSTED_MODEL_LABEL, HOSTED_TIERS["gpt-oss-20b on Groq"])
+API_USD_PER_MTOK_INPUT = _get_float("API_USD_PER_MTOK_INPUT", _rates[0])
+API_USD_PER_MTOK_OUTPUT = _get_float("API_USD_PER_MTOK_OUTPUT", _rates[1])
 LOCAL_DEVICE_WATTS = _get_float("LOCAL_DEVICE_WATTS", 30.0)   # laptop draw while generating
 ELECTRICITY_INR_PER_KWH = _get_float("ELECTRICITY_INR_PER_KWH", 8.0)
 GPU_INR_PER_HOUR = _get_float("GPU_INR_PER_HOUR", 110.0)      # rented inference GPU

@@ -59,7 +59,7 @@ def session_cost(model_usage: list[dict]) -> dict:
     return {
         **t,
         "local_inr": round(local_inr, 4),
-        "api_equivalent_usd": round(api_usd, 4),
+        "api_equivalent_usd": round(api_usd, 6),
         "api_equivalent_inr": round(api_inr, 4),
     }
 

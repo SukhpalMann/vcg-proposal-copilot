@@ -22,26 +22,28 @@ especially on long PDFs. Prepare a full run in advance and time a short live
 section demonstration. Clearly label prepared and live outputs. Show the active
 provider and token/latency log in the Execution tab.
 
-## Public URL (live AI with a hosted model)
+## Public URL (live AI, free)
 
-On Streamlit Community Cloud, choose this repository and `app.py` as the entry
-point. Then open the app's **Settings → Secrets** and paste:
+1. Create a free Groq key (no card): sign in at <https://console.groq.com>,
+   open **API Keys**, **Create API Key**, copy it.
+2. On <https://share.streamlit.io>, **Create app → Deploy a public app from
+   GitHub**: this repository, branch `main`, main file `app.py`.
+3. **Advanced settings**: Python 3.11, and paste into **Secrets**:
 
 ```toml
-LLM_PROVIDER = "anthropic"
-LLM_MODEL = "claude-haiku-5-5"
-ANTHROPIC_API_KEY = "REPLACE_WITH_YOUR_KEY"
+LLM_PROVIDER = "groq"
+GROQ_API_KEY = "REPLACE_WITH_YOUR_GROQ_KEY"
 ```
 
-(The same lines are in `.streamlit/secrets.toml.example`.) Reboot the app. The
-sidebar should read "Live AI: claude-haiku-5-5 drafts each section". If it still
-says "Simulation mode", the key was not picked up; the warning states why.
+4. Deploy. The sidebar should read "Live AI: gpt-oss-20b on Groq drafts each
+   section (free tier)". If it says "Simulation mode", the warning states which
+   key is missing; fix it under **Settings → Secrets** and reboot.
 
-A full proposal drafts in seconds and costs well under a rupee in tokens; the
-Execution tab shows the measured figure. Verification is unchanged and never
-uses the model. Storage is ephemeral, so saved runs may disappear after a
-restart. Never upload confidential client documents to the public demo: in this
-mode they are sent to Anthropic's API.
+The free tier allows roughly 15 full proposals a day; a proposal takes under a
+minute, including any pauses the client takes to respect the per-minute limit.
+Verification is unchanged and never uses the model. Storage is ephemeral, so
+saved runs may disappear after a restart. Never upload confidential client
+documents to the public demo: in this mode they are sent to the provider.
 
 ## Backup
 

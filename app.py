@@ -62,6 +62,11 @@ with st.sidebar:
     st.markdown('<div class="note">RFP to source-grounded, review-ready proposal</div>', **H)
     if config.LLM_PROVIDER == "ollama":
         st.caption(f"Local AI: {config.LLM_MODEL}. Documents stay on this machine.")
+    elif config.LLM_PROVIDER in config.OPENAI_COMPAT:
+        st.caption(f"Live AI: {config.OPENAI_COMPAT[config.LLM_PROVIDER]['label']} "
+                   "drafts each section (free tier). Verification is rule-based and "
+                   "never uses the model. The sample tenders are synthetic; uploaded "
+                   "documents are sent to the provider's API.")
     elif config.LLM_PROVIDER == "anthropic":
         st.caption(f"Live AI: {config.LLM_MODEL} drafts each section. Verification is "
                    "rule-based and never uses the model. The sample tenders are "
@@ -557,7 +562,9 @@ with tab_exec:
         scale = costing.at_scale(usage_events)
 
         st.markdown('<div class="sec-h">Measured cost of this session</div>', **H)
-        hosted_run = cost["provider"] in {"anthropic", "litellm"}
+        hosted_run = cost["provider"] in {"anthropic", "litellm",
+                                          *config.OPENAI_COMPAT}
+        free_run = cost["provider"] in config.FREE_TIER_PROVIDERS
         st.markdown(ui.tiles([
             ("Model", cost["model"] or "—", f'{cost["provider"]} · {cost["calls"]} calls',
              ui.BRAND),
@@ -565,8 +572,10 @@ with tab_exec:
             ("Output tokens", f'{cost["output_tokens"]:,}', "measured", ui.MUTED),
             ("Generation time", f'{cost["seconds"]:.0f}s',
              "API latency" if hosted_run else "wall clock", ui.MUTED),
-            *([("Session cost", f'₹{cost["api_equivalent_inr"]:.2f}',
-                f'measured tokens × {config.HOSTED_MODEL_LABEL} rates',
+            *([("Session cost", "₹0" if free_run else f'₹{cost["api_equivalent_inr"]:.2f}',
+                (f'free tier; ₹{cost["api_equivalent_inr"]:.2f} at paid rates'
+                 if free_run else
+                 f'measured tokens × {config.HOSTED_MODEL_LABEL} rates'),
                 ui.STATUS["SUPPORTED"]["fill"])] if hosted_run else
               [("Local cost", f'₹{cost["local_inr"]:.3f}', "electricity only",
                 ui.STATUS["SUPPORTED"]["fill"]),
@@ -576,8 +585,10 @@ with tab_exec:
         ]), **H)
         if hosted_run:
             st.markdown(
-                f'<div class="note">This proposal cost <b>₹{cost["api_equivalent_inr"]:.2f}</b> '
-                f'in model tokens. The local Ollama mode keeps the tender on the machine '
+                f'<div class="note">This proposal used '
+                f'{cost["input_tokens"] + cost["output_tokens"]:,} model tokens: '
+                f'<b>{"₹0 on the free tier, " if free_run else ""}'
+                f'₹{cost["api_equivalent_inr"]:.2f}</b> at paid rates. The local Ollama mode keeps the tender on the machine '
                 f'at a marginal cost of electricity only, but takes minutes rather than '
                 f'seconds on a laptop.</div>', **H)
         else:
