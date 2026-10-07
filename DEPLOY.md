@@ -22,18 +22,26 @@ especially on long PDFs. Prepare a full run in advance and time a short live
 section demonstration. Clearly label prepared and live outputs. Show the active
 provider and token/latency log in the Execution tab.
 
-## Public URL (simulation only)
+## Public URL (live AI with a hosted model)
 
-The Streamlit Community Cloud URL, if deployed, runs the deterministic mock
-unless an external provider is explicitly configured. It is useful for a
-zero-install walkthrough but is not evidence that a live model generated the
-proposal. A public Streamlit server cannot use the presenter's local Ollama
-instance. The current public URL may run an older version until the updated
-repository is deployed.
+On Streamlit Community Cloud, choose this repository and `app.py` as the entry
+point. Then open the app's **Settings → Secrets** and paste:
 
-On Community Cloud, choose this repository and `app.py` as the entry point.
-Storage is ephemeral, so saved runs may disappear after restart or redeploy.
-Never upload confidential client documents to that public demo.
+```toml
+LLM_PROVIDER = "anthropic"
+LLM_MODEL = "claude-haiku-5-5"
+ANTHROPIC_API_KEY = "REPLACE_WITH_YOUR_KEY"
+```
+
+(The same lines are in `.streamlit/secrets.toml.example`.) Reboot the app. The
+sidebar should read "Live AI: claude-haiku-5-5 drafts each section". If it still
+says "Simulation mode", the key was not picked up; the warning states why.
+
+A full proposal drafts in seconds and costs well under a rupee in tokens; the
+Execution tab shows the measured figure. Verification is unchanged and never
+uses the model. Storage is ephemeral, so saved runs may disappear after a
+restart. Never upload confidential client documents to the public demo: in this
+mode they are sent to Anthropic's API.
 
 ## Backup
 

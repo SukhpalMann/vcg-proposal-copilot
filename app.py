@@ -78,9 +78,9 @@ with st.sidebar:
     fixtures = sorted(p.name for p in config.FIXTURE_DIR.glob("*.md"))
     choice = st.selectbox(
         "Sample RFP", fixtures,
-        help="Four scenarios: a standard engagement, a capability gap, a "
-             "procurement-governed submission, and an RFP with no stated "
-             "evaluation criteria.")
+        help="Ten synthetic tenders, including a standard engagement, a "
+             "capability gap, a procurement-governed submission, an RFP with "
+             "no evaluation criteria, and off-domain and threshold stress cases.")
     uploaded = st.file_uploader("Or upload a document", type=["md", "txt", "pdf"])
     web = st.checkbox("Include external market context", value=False,
                       disabled=config.LLM_PROVIDER in {"ollama", "mock"},

@@ -5,13 +5,15 @@ Turns an inbound RFP into a source-grounded, review-ready proposal in which
 and any statement the evidence does not support is caught before a reviewer
 sees it.
 
-- **Live (deterministic):** <https://rfp-proposal.streamlit.app/>
-- **Live AI:** runs locally on Ollama — no API key, no network, nothing leaves
-  the machine. See [Running with the local model](#running-with-the-local-model).
+- **Live URL:** <https://rfp-proposal.streamlit.app/>. With an Anthropic key in
+  Streamlit secrets it drafts with **Claude Haiku 5.5**; without one it falls
+  back to the deterministic generator and says so in the sidebar. See
+  [Hosted AI](#hosted-ai-the-public-url).
+- **Local AI:** Gemma 3 on Ollama. No key, no network, nothing leaves the
+  machine. See [Running with the local model](#running-with-the-local-model).
 
-The hosted URL cannot run a local model (Streamlit Community Cloud has no GPU
-and no way to host one), so it runs the deterministic generator and says so in
-the interface. The generative demonstration is the local one.
+Two deployments of the same pipeline, because the trade-off is real: hosted is
+fast and cheap per proposal; local keeps a confidential tender on the machine.
 
 > "VCG" is a fictional firm. The evidence corpus and the four tenders are
 > synthetic and labelled as such. Nothing here depicts a real client,
@@ -42,7 +44,18 @@ others, these rows — reproduced from a real run:
 | Demonstrated experience redesigning retail lending operations | `CASE_BANK_001` | In a retail lending engagement in India, VCG reduced pilot approval turnaround time by 18 percent and reduced manual handoffs by 30 percent | **Substantiated** |
 | Evidence of **greater than 30 percent** turnaround-time improvement | *(none)* | In a comparable engagement, VCG delivered a **35 percent** turnaround-time improvement | **Unsubstantiated** |
 
-The last row is the point. The tender demands a threshold the evidence base
+The true 18 percent statement is substantiated as a claim, but the ">30
+percent" requirement it maps to rolls up as **Partial**, with the shortfall
+stated on the row: a true figure below the tender's bar does not meet the bar.
+
+> **Honesty note.** In the deterministic generator the 35 percent overclaim is
+> *planted* (see the header of `services/mock_llm.py`) so the tests always have
+> an error to catch. For a pitch, use a real one:
+> `python scripts/capture_real_errors.py` lists every statement a real model
+> drafted that the verifier blocked. See
+> [Evaluating the model](#evaluating-the-model).
+
+The last row of the table is the point. The tender demands a threshold the evidence base
 cannot meet, so the drafter does what a writer under pressure to answer every
 evaluation criterion does: it asserts a figure that clears the bar, with nothing
 behind it. That claim is **built from the tender's own metric and threshold**,
@@ -61,7 +74,7 @@ Python 3.11+.
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python scripts/seed_corpus.py      # build the evidence index from data/corpus/
-pytest -q                          # 120 tests
+pytest -q                          # 194 tests
 streamlit run app.py
 ```
 
@@ -80,10 +93,31 @@ python scripts/run_demo.py def_capital_no_rubric.md       # tender with no evalu
 
 ### API keys
 
-**There are none.** Generation runs on a local model, so no credential is
-required and no document leaves the machine. `.env.example` documents every
-setting; the only one that would need a key is the optional hosted
-`LLM_PROVIDER=litellm` path, which the demonstration does not use.
+**None are committed, and the local mode needs none.** The only key the product
+uses is for the hosted mode:
+
+| Where you run it | Put the key here | Setting |
+|---|---|---|
+| Your machine | `.env` (copy `.env.example`) | `ANTHROPIC_API_KEY=<your key>` and `LLM_PROVIDER=anthropic` |
+| Streamlit Community Cloud | App settings → Secrets (template: `.streamlit/secrets.toml.example`) | same two lines |
+
+`.env` and `.streamlit/secrets.toml` are git-ignored.
+
+---
+
+## Hosted AI (the public URL)
+
+```bash
+LLM_PROVIDER=anthropic ANTHROPIC_API_KEY=<your key> streamlit run app.py
+```
+
+Drafting goes to Claude Haiku 5.5 through the Anthropic Messages API (standard
+library only, temperature 0, tokens and latency recorded per call). Every other
+stage, including verification, is unchanged and never sees the model. On
+Streamlit Cloud, paste the lines from `.streamlit/secrets.toml.example` into the
+app's Secrets and reboot; `app.py` copies them into the environment before
+configuration loads. Uploaded documents are sent to Anthropic's API in this
+mode; the sample tenders are synthetic.
 
 ---
 
@@ -101,6 +135,9 @@ network and the product still works.
 
 `config.provider_for()` routes per stage. This is a measured decision, not a
 preference:
+
+Whichever provider is active (`ollama` locally, `anthropic` hosted), routing is
+the same:
 
 | Stage | Handler | Why |
 |---|---|---|
@@ -178,16 +215,68 @@ methodology. Two regression tests enforce this.
 
 ## Cost
 
-The Execution tab reports measured tokens, latency, the local electricity cost
-and the hosted-API equivalent for the same workload, plus a 10,000-user monthly
-projection. Token counts and elapsed time are **measured**; every rate is a
-**declared assumption** shown beside the figures and set in `config.py`
-(see `services/costing.py`).
+The Execution tab reports measured tokens and latency for the run, its rupee
+cost, every hosted tier side by side, a 10,000-user monthly projection and a
+"what we would change at that scale" list derived from those numbers. Tokens
+and time are **measured**; every rate is a **declared assumption** shown beside
+the figures and set in `config.py` (hosted rates checked against the Anthropic
+pricing page on 2026-10-08).
 
-Running locally the marginal cost is electricity — fractions of a rupee per
-proposal — against a few rupees for the same tokens on a hosted API. The
-trade-off is explicit: hosted is faster and better written; local keeps the
-tender and the firm's evidence inside the tenant.
+Using the measured local run above (10,474 input + 1,924 output tokens per
+proposal; ₹89 per USD):
+
+| | Per proposal | 10,000 proposals / month |
+|---|---|---|
+| Claude Haiku 5.5 ($0.10 / $0.50 per M tokens) | ₹0.18 | ₹1,788 |
+| Claude Sonnet 5.5 ($2 / $10 per M tokens) | ₹3.58 | ₹35,767 |
+| Local laptop (30 W × 250 s, ₹8/kWh) | ₹0.017 | does not scale on one laptop |
+| Self-hosted GPU (₹110/h; 40 output tok/s single stream) | n/a | 148 busy GPU-hours (₹16,297), but **₹80,300** for one GPU always on |
+
+What we would change at that scale:
+
+- **Serve the hosted tier by default.** One always-on GPU costs about 45 times
+  the Haiku bill; self-hosting only pays past roughly 449,000 proposals a month.
+- **Keep local mode as the data-residency option**, priced as such: for a firm
+  whose tenders may not leave its network, the GPU floor is the price of the
+  guarantee.
+- **Cache the shared prompt prefix.** 84% of tokens are input (tender plus
+  evidence, resent per section); cached reads bill at a fraction of input.
+- **Skip the model call for sections that will be an evidence gap.** The
+  verifier would block that text anyway.
+- **Keep verification rule-based.** It costs no tokens, so cost grows only with
+  drafting.
+
+The earlier projection multiplied the *laptop's* 250 seconds by 10,000 sessions,
+which priced a rented GPU at laptop speed. GPU time is now derived from tokens.
+
+---
+
+## Evaluating the model
+
+Two scripts make the AI claims checkable. Both refuse the deterministic
+generator, because its errors are planted.
+
+**Prompt A/B.** `DRAFT_PROMPT_VERSION` selects the drafting prompt. `v2` was
+written against the failures observed with the local model: it lists the only
+evidence ids the model may cite, requires figures to be copied verbatim from the
+cited passage, and turns an unreachable tender threshold into an evidence-gap
+marker instead of a rounded-up claim.
+
+```bash
+LLM_PROVIDER=anthropic ANTHROPIC_API_KEY=<key> python scripts/prompt_ab.py
+LLM_PROVIDER=ollama LLM_MODEL=gemma3:latest python scripts/prompt_ab.py   # slower
+```
+
+Both prompts draft the same three tenders; the rule-based verifier scores the
+output (invented citation ids, uncited factual claims, blocked figures,
+substantiation rate, tokens, cost). Results land in `docs/prompt_ab_results.md`.
+Adopt v2 by setting `DRAFT_PROMPT_VERSION=v2` only if the table says it is
+better.
+
+**Real errors for the demo.** `python scripts/capture_real_errors.py
+--run-id demo-local` (or `--fixture <tender>` to draft fresh) writes
+`docs/real_model_errors.md`: each statement a real model drafted that the
+verifier blocked, what it cited, and why it was refused.
 
 ---
 
@@ -218,7 +307,7 @@ Stated plainly, because the product's whole claim is that it does not overstate:
 | Concern | Default | Alternative |
 |---|---|---|
 | Orchestrator | plain ordered function chain | — |
-| Generation | `LLM_PROVIDER=mock` (deterministic) | `ollama` for local AI; `litellm` sends data to a hosted provider |
+| Generation | `LLM_PROVIDER=mock` (deterministic) | `ollama` for local AI; `anthropic` (Claude Haiku 5.5) for the hosted demo; `litellm` for other providers |
 | Embeddings | `tfidf` — fit on the seeded corpus, no download | `sentence-transformers` |
 | Vector store | local numpy matrix, pickle-persisted | ChromaDB |
 | External context | `mock`, disabled | `tavily` or `ddg` — background only, never cited as firm evidence |
@@ -241,13 +330,15 @@ models/schemas.py          Pydantic v2 models
 state/graph_state.py       ProposalAgentState
 data/corpus/*.md           10 synthetic evidence documents
 data/sample_systems/*.json fictional CRM / HR / rate-card / time-billing inputs
-fixtures/rfp/*.md          4 tenders (happy path, capability gap, procurement, no rubric)
+fixtures/rfp/*.md          10 tenders (happy path, capability gap, procurement, no rubric,
+                           off-domain, word-number and aggressive thresholds, ...)
 pipeline/                  one module per stage, plus graph.py, qualification.py,
                            verification.py, review.py, export.py
 services/                  corpus loader, embeddings, vector store, LLM providers,
                            costing, persistence, text utilities
-scripts/                   seed_corpus, calibrate, run_demo, record_demo_run
-tests/                     120 tests
+scripts/                   seed_corpus, calibrate, run_demo, record_demo_run,
+                           prompt_ab, capture_real_errors, stress_test
+tests/                     194 tests
 app.py, ui.py              Streamlit interface and design tokens
 ```
 
