@@ -51,7 +51,7 @@ CHROMA_PATH = Path(_get("CHROMA_PATH", str(ROOT / ".chroma")))
 
 # --- LLM ------------------------------------------------------------------
 LLM_PROVIDER = _get("LLM_PROVIDER", "mock")   # mock | ollama | groq | gemini | anthropic | litellm
-ANTHROPIC_API_KEY = _get("ANTHROPIC_API_KEY", "")
+ANTHROPIC_API_KEY = _get("ANTHROPIC_API_KEY", "").strip().strip("\"'").strip()
 ANTHROPIC_MAX_TOKENS = int(_get_float("ANTHROPIC_MAX_TOKENS", 1500))
 
 # Hosted providers with a FREE tier, reached through their OpenAI-compatible
@@ -85,7 +85,11 @@ COMPAT_MAX_RETRY_SECONDS = _get_float("COMPAT_MAX_RETRY_SECONDS", 90.0)
 
 def compat_api_key(provider: str) -> str:
     preset = OPENAI_COMPAT.get(provider)
-    return os.environ.get(preset["key_env"], "") if preset else ""
+    if not preset:
+        return ""
+    # Keys pasted into Streamlit secrets often carry a stray space, newline or a
+    # second pair of quotes, which the provider rejects as "Invalid API Key".
+    return os.environ.get(preset["key_env"], "").strip().strip('"\'').strip()
 
 
 # A hosted deployment missing its key falls back to the deterministic generator
