@@ -62,6 +62,10 @@ if LLM_PROVIDER == "anthropic" and not ANTHROPIC_API_KEY:
 _DEFAULT_MODEL = {"ollama": "gemma3:latest", "anthropic": "claude-haiku-5-5"}
 LLM_MODEL = _get("LLM_MODEL", _DEFAULT_MODEL.get(LLM_PROVIDER, "anthropic/claude-haiku-5-5"))
 
+# Drafting prompt version: v1 (original) or v2 (explicit allowed ids, verbatim
+# figures, threshold -> gap). scripts/prompt_ab.py measures the difference.
+DRAFT_PROMPT_VERSION = _get("DRAFT_PROMPT_VERSION", "v1")
+
 OLLAMA_NUM_CTX = int(_get_float("OLLAMA_NUM_CTX", 8192))   # 4096 truncates drafting prompts
 
 # Per-stage provider routing. Extraction and planning are structural work with a

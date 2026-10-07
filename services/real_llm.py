@@ -18,6 +18,8 @@ failure the caller gets a clear RuntimeError rather than a silent bad result.
 """
 from __future__ import annotations
 
+import config
+
 import json
 import re
 
@@ -158,6 +160,43 @@ HARD RULES:
   **HUMAN INPUT REQUIRED:** <what the engagement partner must supply>
 Keep it tight: 2-5 sentences per checklist item."""
 
+# v2: written after observing the local model invent evidence ids and restate
+# figures loosely. Three changes, each aimed at one measured failure:
+#   1. the exact list of citable ids is given, and anything else is forbidden;
+#   2. figures must be copied verbatim from the passage being cited;
+#   3. a tender threshold the evidence does not reach must become a gap marker,
+#      not a rounded-up claim.
+# scripts/prompt_ab.py measures v1 against v2; DRAFT_PROMPT_VERSION selects one.
+_DRAFT_SYS_V2 = """You draft ONE section of a consulting proposal from supplied evidence only.
+Output Markdown prose (no JSON).
+
+CITATIONS:
+- You may cite ONLY the evidence ids listed under ALLOWED EVIDENCE IDS, copied
+  character for character. Never shorten, rename or invent an id.
+- Put the citation immediately after the sentence it supports: [[ev:<evidence_id>]].
+- If a sentence answers a checklist item, also tag it: [[req:<checklist_id>]].
+
+FACTS:
+- A factual statement about our firm must come from ONE cited passage.
+- Copy every number, percentage, name, client and duration exactly as it appears
+  in the passage you cite. Do not round, combine or restate figures.
+- If the tender asks for a threshold (for example "greater than 30 percent") and
+  no passage reaches it, do NOT state a figure that meets it. Write
+  [EVIDENCE GAP: <the threshold and what the evidence actually shows>].
+
+OTHER CONTENT:
+- Proposed FUTURE actions use prospective phrasing ("We propose...", "In weeks 1-3
+  the team will...") and carry NO evidence citation.
+- If evidence is insufficient for a checklist item, write exactly:
+  [EVIDENCE GAP: <what is missing>]
+- For pricing / named staffing / commercial terms write exactly:
+  **HUMAN INPUT REQUIRED:** <what the engagement partner must supply>
+Keep it tight: 2-5 sentences per checklist item."""
+
+
+def draft_prompt_version() -> str:
+    return (config.DRAFT_PROMPT_VERSION or "v1").lower()
+
 
 def draft_section(section_title, rfp_data, section_checklist, evidence_by_checklist,
                   *, all_supported_evidence_ids=None, section_evidence_pool=None,
@@ -179,7 +218,13 @@ def draft_section(section_title, rfp_data, section_checklist, evidence_by_checkl
     )
     if section_title == "Executive Summary":
         user += "\n\nWrite this LAST: synthesise the rest; no new claims."
-    return complete(_DRAFT_SYS, user).strip()
+    system = _DRAFT_SYS
+    if draft_prompt_version() == "v2":
+        system = _DRAFT_SYS_V2
+        allowed = sorted({e["evidence_id"] for e in pool})
+        user += ("\n\nALLOWED EVIDENCE IDS (cite only these, exactly):\n"
+                 + ("\n".join(f"- {i}" for i in allowed) or "(none: cite nothing)"))
+    return complete(system, user).strip()
 
 
 # --------------------------------------------------------------------------- #
