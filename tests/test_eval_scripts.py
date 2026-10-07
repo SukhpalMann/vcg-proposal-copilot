@@ -50,8 +50,8 @@ def test_prompt_ab_measures_both_variants(monkeypatch, tmp_path):
         assert s["blocked"] >= 1                     # the 42 percent claim is caught
     assert "| Invented citation ids |" in out.with_suffix(".md").read_text()
     # v2 really sends a different prompt, including the allowed-id list
-    assert any("ALLOWED EVIDENCE IDS" in u for _, u in SEEN)
-    assert any("ALLOWED EVIDENCE IDS" not in u for _, u in SEEN)
+    assert any("ALLOWED CITATIONS" in u for _, u in SEEN)
+    assert any("ALLOWED CITATIONS" not in u for _, u in SEEN)
 
 
 def test_prompt_ab_refuses_mock(monkeypatch):

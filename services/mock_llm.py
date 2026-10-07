@@ -749,8 +749,31 @@ def normalise_tags(text: str) -> str:
         text = _TAG_RUN_JOIN.sub(r"\1 ", text)
     def _canon(m: re.Match) -> str:
         return "[[" + m.group(1).lower() + ":" + m.group(2) + "]]"
-    return re.sub(r"\[{1,2}\s*(ev|req)\s*:\s*([A-Za-z0-9_\-:.]+?)\s*[\]>)]{1,2}",
+    text = re.sub(r"\[{1,2}\s*(ev|req)\s*:\s*([A-Za-z0-9_\-:.]+?)\s*[\]>)]{1,2}",
                   _canon, text, flags=re.I)
+    # A tag with its kind prefix dropped. Observed live: gpt-oss-20b wrote
+    # "[[CHK-014::CASE_BANK_001::00.00]]", which parsed as no citation at all, so a
+    # sentence citing real evidence was reported as an uncited orphan. The kind is
+    # recoverable from the id's shape. Only the FORMAT is repaired: the id must
+    # still resolve to selected evidence and the passage must still support the
+    # sentence, so a wrong citation fails exactly as before.
+    return _BARE_TAG.sub(_bare_kind, text)
+
+
+_BARE_EV = re.compile(r"^(?:POOL|CHK-\d+)::[A-Z][A-Z0-9_]*::[\d.]+$|^[A-Z]+_[A-Z0-9_]*\d+$")
+_BARE_REQ = re.compile(r"^(?:CHK|REQ)-\d+$")
+_BARE_TAG = re.compile(r"\[\[\s*([A-Za-z0-9_\-:.]+?)\s*\]\]")
+
+
+def _bare_kind(m: re.Match) -> str:
+    ident = m.group(1)
+    if ident.lower().startswith(("ev:", "req:")):
+        return m.group(0)
+    if _BARE_EV.match(ident):
+        return f"[[ev:{ident}]]"
+    if _BARE_REQ.match(ident):
+        return f"[[req:{ident}]]"
+    return m.group(0)
 # past-tense VCG achievement verbs -- only these (plus a number or a named person)
 # make a sentence a historical claim that must be verified. Framing sentences
 # ("we have read the RFP", "we propose...") are not historical claims.

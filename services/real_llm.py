@@ -171,9 +171,9 @@ _DRAFT_SYS_V2 = """You draft ONE section of a consulting proposal from supplied 
 Output Markdown prose (no JSON).
 
 CITATIONS:
-- You may cite ONLY the evidence ids listed under ALLOWED EVIDENCE IDS, copied
-  character for character. Never shorten, rename or invent an id.
-- Put the citation immediately after the sentence it supports: [[ev:<evidence_id>]].
+- You may cite ONLY the tags listed under ALLOWED CITATIONS. Copy a tag exactly,
+  including the "[[ev:" prefix. Never shorten, rename or invent an id.
+- Put the citation immediately after the sentence it supports.
 - If a sentence answers a checklist item, also tag it: [[req:<checklist_id>]].
 
 FACTS:
@@ -222,8 +222,11 @@ def draft_section(section_title, rfp_data, section_checklist, evidence_by_checkl
     if draft_prompt_version() == "v2":
         system = _DRAFT_SYS_V2
         allowed = sorted({e["evidence_id"] for e in pool})
-        user += ("\n\nALLOWED EVIDENCE IDS (cite only these, exactly):\n"
-                 + ("\n".join(f"- {i}" for i in allowed) or "(none: cite nothing)"))
+        # Listed as complete tags: the bare-id list made gpt-oss-20b copy the id
+        # and drop the "ev:" prefix, so its citations stopped parsing.
+        user += ("\n\nALLOWED CITATIONS (copy one of these tags exactly, including "
+                 "\"[[ev:\" and \"]]\"):\n"
+                 + ("\n".join(f"- [[ev:{i}]]" for i in allowed) or "(none: cite nothing)"))
     return complete(system, user).strip()
 
 

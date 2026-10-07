@@ -538,3 +538,21 @@ def test_a_trailing_citation_still_stays_with_its_own_sentence():
 
     assert sentences("We did one thing. [[ev:A]] Then we did another. [[ev:B]]") == [
         "We did one thing. [[ev:A]]", "Then we did another. [[ev:B]]"]
+
+
+def test_bare_tag_without_kind_is_repaired_not_dropped():
+    """Observed live (gpt-oss-20b, v2 prompt): the "ev:" prefix was dropped, so a
+    sentence citing real evidence parsed as an uncited orphan."""
+    from services.mock_llm import decompose_claims, normalise_tags
+
+    live = ("This inefficiency has caused the bank to lose volume to digital-first "
+            "lenders [[CHK-014::CASE_BANK_001::00.00]].")
+    assert "[[ev:CHK-014::CASE_BANK_001::00.00]]" in normalise_tags(live)
+    assert normalise_tags("x [[CHK-014]].") == "x [[req:CHK-014]]."
+    assert normalise_tags("x [[CV_001]].") == "x [[ev:CV_001]]."
+    # anything that does not look like an id is left alone
+    assert normalise_tags("[[EVIDENCE GAP: none]]") == "[[EVIDENCE GAP: none]]"
+
+    claims = decompose_claims("Context", "VCG reduced turnaround time by 18 percent "
+                                        "[[CHK-003::CASE_BANK_001::01.00]].")
+    assert claims and claims[0]["cited_evidence_ids"] == ["CHK-003::CASE_BANK_001::01.00"]
