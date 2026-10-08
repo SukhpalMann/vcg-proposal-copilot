@@ -15,7 +15,26 @@ sees it.
 Two deployments of the same pipeline, because the trade-off is real: hosted is
 fast and cheap per proposal; local keeps a confidential tender on the machine.
 
-> "VCG" is a fictional firm. The evidence corpus and the four tenders are
+> **For the AAs: run it with live AI in five commands (Python 3.11+)**
+>
+> ```bash
+> pip install -r requirements.txt
+> python scripts/seed_corpus.py
+> pytest -q                                   # 201 tests, no key needed
+> cp .env.example .env                        # then edit .env:
+> #   LLM_PROVIDER=groq
+> #   GROQ_API_KEY=<replace with a free key from https://console.groq.com/keys>
+> streamlit run app.py
+> ```
+>
+> **The only key is `GROQ_API_KEY`, and it goes in `.env`** (or in Streamlit
+> Cloud's Secrets). None is committed. Without it the app still runs, but the
+> sidebar says **"Simulation mode"** and no AI is used. With it, the sidebar
+> says **"Live AI: gpt-oss-20b on Groq"**. Pick the ABC Bank tender, press
+> **Assess bid fit**, record a BID decision, and allow about a minute: the free
+> tier rate-limits, and the app waits and retries automatically.
+
+> "VCG" is a fictional firm. The evidence corpus and the ten tenders are
 > synthetic and labelled as such. Nothing here depicts a real client,
 > engagement or person.
 
@@ -74,7 +93,7 @@ Python 3.11+.
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python scripts/seed_corpus.py      # build the evidence index from data/corpus/
-pytest -q                          # 198 tests
+pytest -q                          # 201 tests
 streamlit run app.py
 ```
 
@@ -353,7 +372,7 @@ services/                  corpus loader, embeddings, vector store, LLM provider
                            costing, persistence, text utilities
 scripts/                   seed_corpus, calibrate, run_demo, record_demo_run,
                            prompt_ab, capture_real_errors, stress_test
-tests/                     198 tests
+tests/                     201 tests
 app.py, ui.py              Streamlit interface and design tokens
 ```
 

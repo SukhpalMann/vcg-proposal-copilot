@@ -6,6 +6,7 @@ they are read from here so the System Owner (see SPEC.md Section 2) owns them.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -20,7 +21,11 @@ def _load_dotenv() -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, value = line.partition("=")
-        os.environ.setdefault(key.strip(), value.strip())
+        # Inline comments ("tfidf   # tfidf | sentence-transformers") are part of
+        # .env.example; without stripping them the comment became the value and a
+        # copied template silently broke the embeddings and vector-store settings.
+        value = re.split(r"\s+#", value, maxsplit=1)[0].strip().strip('"\'')
+        os.environ.setdefault(key.strip(), value)
 
 
 _load_dotenv()
